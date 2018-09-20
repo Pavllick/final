@@ -78,7 +78,8 @@ std::string Request::get_response(std::string req_header, std::string dir) {
 	if(rm != "GET" || path == "")
 		answ = Response::nf();
 	else {
-		std::ifstream f(dir + path);
+		std::string dir_path = dir + path;
+		std::ifstream f(dir_path);
 					
 		if(!f)
 			answ = Response::nf();
