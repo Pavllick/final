@@ -67,7 +67,7 @@ int open_con(Args args) {
 }
 
 int main(int argc, char **argv) {
-	daemonize();
+	// daemonize();
 
 	Args args;
 	if(args.get_args(argc, argv) == -1) {
