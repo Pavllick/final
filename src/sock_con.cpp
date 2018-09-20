@@ -2,8 +2,7 @@
 
 #include <iostream>
 #include <fstream>
-#include <regex>
-// #include <map>
+// #include <regex>
 #include <sstream>
 
 #include <sys/types.h>
@@ -26,16 +25,55 @@ int Sock::set_nonblock(int fd) {
 #endif
 }
 
+std::pair<std::string, std::string> parse_find(std::string str_buf) {
+	std::pair<std::string, std::string> params("", "");
+	
+	std::size_t find_pos = 0;
+	find_pos = str_buf.find("GET");
+	if(find_pos == std::string::npos)
+		return params;
+	else
+		params.first = "GET";
+
+	find_pos = 0;
+	find_pos = str_buf.find("/");
+	if(find_pos == std::string::npos) {
+		return params;
+	}
+		
+	if(str_buf[find_pos + 1] == ' ') {
+		return params;
+	}
+	str_buf = str_buf.substr(find_pos + 1);
+		
+	find_pos = str_buf.find("?");
+	if(find_pos != std::string::npos)
+		params.second = str_buf.substr(0, find_pos);
+	else {
+		find_pos = str_buf.find(" ");
+		if(find_pos != std::string::npos)
+			params.second = str_buf.substr(0, find_pos);
+	}
+	 
+	return params;
+}
+
 std::string Request::get_response(std::string req_header, std::string dir) {
-	std::regex rgx_get(R"((^GET){1}(?:\s){1}(?:\/){1}(\w+\.\w+){1})");
-	std::smatch m;
-	regex_search(req_header, m, rgx_get);
+	// std::regex rgx_get(R"((^GET){1}(?:\s){1}(?:\/){1}(\w+\.\w+){1})");
+	// std::smatch m;
+	// regex_search(req_header, m, rgx_get);
 
-	std::string rm = m[1].str();
-	std::string path = m[2].str();
+	std::pair<std::string, std::string> parse = parse_find(req_header);
 
+	// std::string rm = m[1].str();
+	// std::string path = m[2].str();
+	std::string rm = parse.first;
+	std::string path = parse.second;
+
+	std::cout << "p: '" << rm << "'" << std::endl;
+	
 	std::string answ;
-	if(rm != "GET" && path == "")
+	if(rm != "GET" || path == "")
 		answ = Response::nf();
 	else {
 		std::ifstream f(dir + path);
