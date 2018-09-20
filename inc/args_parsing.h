@@ -21,7 +21,7 @@ struct Args {
 			}
 		}
 	
-		if(host == nullptr || port == 0)
+		if(host == NULL || port == 0)
 			return -1;
 
 		if(dir == "")
@@ -32,7 +32,7 @@ struct Args {
 		return 0;
 	}
 	
-	char *host = nullptr;
+	char *host = NULL;
 	int port = 0;
 	std::string dir = "";
 };
