@@ -28,10 +28,10 @@ struct Response {
 class Sock {
 public:
 	static int set_nonblock(int fd);
-	
-	int assept(struct kevent &KEvent, std::pair<int,  sockaddr> &slave, int &KQueue);
+
+	int assept(std::pair<int,  sockaddr> &slave, unsigned int &EPoll);
 	static void *slave_thread(void *args);
-	int handler(int KQueue, std::string dir);
+	int handler(unsigned int EPoll, std::string dir);
 
 	int master_socket;
 };

@@ -4,14 +4,18 @@
 #include <fstream>
 // #include <regex>
 #include <sstream>
+#include <string.h>
+#include <set>
 
+#include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <arpa/inet.h>
-#include <sys/event.h>
+
+#define MAX_EVENTS 32
 
 int Sock::set_nonblock(int fd) {
 	int flags;
@@ -70,8 +74,6 @@ std::string Request::get_response(std::string req_header, std::string dir) {
 	std::string rm = parse.first;
 	std::string path = parse.second;
 
-	std::cout << "p: '" << rm << "'" << std::endl;
-	
 	std::string answ;
 	if(rm != "GET" || path == "")
 		answ = Response::nf();
@@ -122,15 +124,16 @@ std::string Response::nf() {
 	return answ.str();
 }
 
-int Sock::assept(struct kevent &KEvent, std::pair<int,  sockaddr> &slave, int &KQueue) {
+int Sock::assept(std::pair<int,  sockaddr> &slave, unsigned int &EPoll) {
 	struct sockaddr slave_sa;
 	socklen_t size_slave_sa = sizeof(slave_sa);
 	int slave_sock = accept(master_socket, &slave_sa, &size_slave_sa);
 	set_nonblock(slave_sock);
 
-	bzero(&KEvent, sizeof(KEvent));
-	EV_SET(&KEvent, slave_sock, EVFILT_READ, EV_ADD, 0, 0, 0);
-	kevent(KQueue, &KEvent, 1, nullptr, 0, nullptr);
+	struct epoll_event Event;
+	Event.data.fd = slave_sock;
+	Event.events = EPOLLIN;
+	epoll_ctl(EPoll, EPOLL_CTL_ADD, slave_sock, &Event);
 
 	slave.first = slave_sock;
 	slave.second = slave_sa;
@@ -139,66 +142,80 @@ int Sock::assept(struct kevent &KEvent, std::pair<int,  sockaddr> &slave, int &K
 }
 
 struct ThrArgs {
-	int KQueue;
-	std::string dir;
+	unsigned int EPoll;
+	std::string *dir;
 	std::pair<int, sockaddr> slave;
+	std::set<int> *fds;
+	pthread_mutex_t *mtx;
 };
 
 void *Sock::slave_thread(void *args) {
-	int KQueue = ((ThrArgs *)args)->KQueue;
-	std::string dir = ((ThrArgs *)args)->dir;
+	int EPoll = ((ThrArgs *)args)->EPoll;
+	std::string dir = *((ThrArgs *)args)->dir;
 	std::pair<int, sockaddr> slave = ((ThrArgs *)args)->slave;
+	std::set<int> *fds = ((ThrArgs *)args)->fds;
 
-	struct kevent KEvent;
-	for(;;) {
-		bzero(&KEvent, sizeof(KEvent));
-		kevent(KQueue, nullptr, 0, &KEvent, 1, nullptr);
+	static char buf[1024];
+	bzero(buf, sizeof(buf));
 
-		if(KEvent.filter & EVFILT_READ) {
-			if(KEvent.ident == slave.first) {
-				std::string req_header;
-
-				static char buf[1024];
-				bzero(buf, sizeof(buf));
-	
-				int resv_size = recv(slave.first, buf, sizeof(buf), MSG_NOSIGNAL);
-				if(resv_size <= 0) {
-					close(KEvent.ident);
-					std::cout << "disconnection" << std::endl;
-					return args;
-				}
-				
-				std::stringstream ss;
-				ss << buf;
-				std::getline(ss, req_header);
-
-				Request request;
-				std::string answ = request.get_response(req_header, dir);
-				
-				send(slave.first, answ.c_str(), answ.size(), MSG_NOSIGNAL);
-			}
-		}
+	int resv_size = recv(slave.first, buf, sizeof(buf), MSG_NOSIGNAL);
+	if(resv_size <= 0) {
+		shutdown(slave.first, SHUT_RDWR);
+		close(slave.first);
+		std::cout << "disconnection" << std::endl;
+		return args;
 	}
+				
+	std::stringstream ss;
+	ss << buf;
+	std::string req_header;
+	std::getline(ss, req_header);
 
+	Request request;
+	std::string answ = request.get_response(req_header, dir);
+				
+	send(slave.first, answ.c_str(), answ.size(), MSG_NOSIGNAL);
+
+	shutdown(slave.first, SHUT_RDWR);
+	close(slave.first);
+
+	pthread_mutex_lock(((ThrArgs *)args)->mtx);
+	fds->erase(fds->find(slave.first));
+	pthread_mutex_unlock(((ThrArgs *)args)->mtx);
+	
 	return args;
 }
 
-int Sock::handler(int KQueue, std::string dir) {
+int Sock::handler(unsigned int EPoll, std::string dir) {
 	std::pair<int, sockaddr> slave;
-	struct kevent KEvent;
-	for(;;) {
-		bzero(&KEvent, sizeof(KEvent));
-		kevent(KQueue, nullptr, 0, &KEvent, 1, nullptr);
-		
-		if(KEvent.filter & EVFILT_READ) {
-			if(KEvent.ident == master_socket) {
-				assept(KEvent, slave, KQueue);
+	std::set<int> fds;
 
-				ThrArgs thr_args = {KQueue, dir, slave};
-				pthread_t th_id;
-				pthread_create(&th_id, NULL, &Sock::slave_thread, &thr_args);
-				pthread_detach(th_id);
+	std::cout << dir << std::endl;
+
+	pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
+	for(;;) {
+		struct epoll_event Events[MAX_EVENTS];
+		int n_events = epoll_wait(EPoll, Events, MAX_EVENTS, -1);
+		// std::cout << n_events << std::endl;
+		
+		for(int i = 0; i < n_events; i++) {
+			if(Events[i].data.fd == master_socket)
+				assept(slave, EPoll);
+			else {
+				if(fds.find(Events[i].data.fd) == fds.end()) {
+			
+					pthread_mutex_lock(&mtx);
+					fds.insert(Events[i].data.fd);
+					pthread_mutex_unlock(&mtx);
+					
+					slave.first = Events[i].data.fd;
+					ThrArgs thr_args = {EPoll, &dir, slave, &fds, &mtx};
+					pthread_t th_id;
+					pthread_create(&th_id, NULL, &Sock::slave_thread, &thr_args);
+					pthread_detach(th_id);
+				}
 			}
 		}
 	}
 }
+

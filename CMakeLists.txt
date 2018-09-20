@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 project(final)
 
+
 macro(use_cxx11)
   if (CMAKE_VERSION VERSION_LESS "3.1")
     if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -17,3 +18,4 @@ set(SOURCE_FILES final.cpp ./src/sock_con.cpp)
 
 
 add_executable(${CMAKE_PROJECT_NAME} ${SOURCE_FILES})
+TARGET_LINK_LIBRARIES( final pthread)

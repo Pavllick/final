@@ -4,13 +4,14 @@
 #include <map>
 #include <sstream>
 
-#include <sys/types.h>
+#include <sys/epoll.h>
+// #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <arpa/inet.h>
-#include <sys/event.h>
+// #include <sys/event.h>
 
 #include <signal.h>
 
@@ -45,20 +46,28 @@ int open_con(Args args) {
 	Sock::set_nonblock(con.master_socket);
 	listen(con.master_socket, SOMAXCONN);
 
-	int KQueue = kqueue();
+	unsigned int EPoll = epoll_create1(0);
+	struct epoll_event Event;
+	Event.data.fd = con.master_socket;
+	Event.events = EPOLLIN;
+	epoll_ctl(EPoll, EPOLL_CTL_ADD, con.master_socket, &Event);
 
-	struct kevent KEvent;
-	bzero(&KEvent, sizeof(KEvent));
-	EV_SET(&KEvent, con.master_socket, EVFILT_READ, EV_ADD, 0, 0, 0);
-	kevent(KQueue, &KEvent, 1, nullptr, 0, nullptr);
+	con.handler(EPoll, args.dir);
 
-	con.handler(KQueue, args.dir);
+	// int KQueue = kqueue();
+
+	// struct kevent KEvent;
+	// bzero(&KEvent, sizeof(KEvent));
+	// EV_SET(&KEvent, con.master_socket, EVFILT_READ, EV_ADD, 0, 0, 0);
+	// kevent(KQueue, &KEvent, 1, nullptr, 0, nullptr);
+
+	// con.handler(KQueue, args.dir);
 	
 	return 0;
 }
 
 int main(int argc, char **argv) {
-	// daemonize();
+	daemonize();
 
 	Args args;
 	if(args.get_args(argc, argv) == -1) {
