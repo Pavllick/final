@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <unistd.h>
+#include <stdlib.h>
 
 struct Args {
 	int get_args(int argc, char **argv) {
