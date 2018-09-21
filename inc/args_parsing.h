@@ -26,7 +26,8 @@ struct Args {
 			return -1;
 
 		if(dir == "")
-			dir = "./";
+			return -1;
+			//dir = "./";
 		if(dir[dir.size() - 1] != '/')
 			dir.append("/");
 
