@@ -73,7 +73,7 @@ std::string Request::get_response(std::string req_header, std::string dir) {
 	// std::string path = m[2].str();
 	std::string rm = parse.first;
 	std::string path = parse.second;
-
+	
 	std::string answ;
 	if(rm != "GET" || path == "")
 		answ = Response::nf();
@@ -100,6 +100,7 @@ std::string Request::get_response(std::string req_header, std::string dir) {
 					
 		f.close();
 	}
+	
 
 	return answ;
 }
@@ -164,6 +165,11 @@ void *Sock::slave_thread(void *args) {
 		shutdown(slave.first, SHUT_RDWR);
 		close(slave.first);
 		std::cout << "disconnection" << std::endl;
+
+		pthread_mutex_lock(((ThrArgs *)args)->mtx);
+		fds->erase(fds->find(slave.first));
+		pthread_mutex_unlock(((ThrArgs *)args)->mtx);
+	
 		return args;
 	}
 				

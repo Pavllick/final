@@ -67,13 +67,13 @@ int open_con(Args args) {
 }
 
 int main(int argc, char **argv) {
-	daemonize();
-
 	Args args;
 	if(args.get_args(argc, argv) == -1) {
 		std::cout << "Arg err!" << std::endl;
-		return 0;
+		return 1;
 	}
+
+	daemonize();
 
 	std::cout << open_con(args) << std::endl;
 
